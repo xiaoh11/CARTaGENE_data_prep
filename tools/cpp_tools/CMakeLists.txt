@@ -11,3 +11,4 @@ add_subdirectory(test)
 enable_testing()
 add_test(NAME ${PROJECT_NAME}_test COMMAND testAll)
 
+
