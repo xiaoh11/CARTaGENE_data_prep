@@ -60,9 +60,29 @@ int main(int argc, char* argv[]) {
     }
 
     try {
+        unordered_map<string, string> populations; // HX
+        unordered_map<string, vector<unsigned int> > populations_ac; // HX: create map that uses populations as keys and stores vectors of counts as values
+        unordered_map<string, unsigned int> populations_an; // HX: create map that uses populations as keys and stores allele numbers as values
         if (!samples_file.empty()) {
             cout << "Reading samples file... " << flush;
-            samples = read_samples(samples_file.c_str());
+            //samples = read_samples(samples_file.c_str()); // HX
+            samples = read_samples(samples_file.c_str(), populations); // HX
+            //cout << "sample: " << samples << endl;  // HX --> samples is verified to be a string of all sample ids
+            //cout << "Population unordered map: " << endl;
+            for (const auto& pair : populations) { // HX
+                //cout << "Sample: " << pair.first << ", Population: " << pair.second << endl; 
+                populations_ac[pair.second] = vector<unsigned int>() ;// pair.second is the populations
+                populations_an[pair.second] = 0u ;
+            }
+            //HX
+            cout << "Found these population(s): " << endl;
+            for (const auto& pair : populations_ac) { // HX
+                cout << "Population: " << pair.first; // << ", Count: ";
+                for(const auto& num : pair.second) {
+                cout << num << ' ';
+                }
+                cout << '\n';
+            }
             cout << "Done." << endl;
             cout << "Found " << count(samples.begin(), samples.end(), ',')  + 1 << " sample(s)." << endl;
         }
@@ -95,9 +115,20 @@ int main(int argc, char* argv[]) {
 
         if (!samples.empty()) {
             cout << "Setting sample(s)... " << flush;
+            //HX
+            //cout << "Number of samples before:" << header->n[2] << endl;
+
             if (bcf_hdr_set_samples(header, samples.c_str(), 0) != 0) {
                 throw runtime_error("Error while subsetting samples!");
             }
+
+            //HX
+            // cout << "Number of samples after:" << header->n[2] << endl;
+            // for (int i = 0; i < header->n[2]; ++i) {
+            // const char* sample_name = bcf_hdr_int2id(header, BCF_DT_SAMPLE, i);
+            // std::cout << "Sample " << i+1 << ": " << sample_name << std::endl;
+            // }
+            
             cout << "Done." << endl;
         }
 
@@ -184,6 +215,15 @@ int main(int argc, char* argv[]) {
         write(ofp, "##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Number of Alleles in Samples with Coverage\">\n");
         write(ofp, "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Alternate Allele Counts in Samples with Coverage\">\n");
         write(ofp, "##INFO=<ID=AF,Number=A,Type=Float,Description=\"Alternate Allele Frequencies\">\n");
+        
+        //HX loop through your population_ac and
+        for (const auto& pair : populations_ac) { 
+            if (pair.first != "NA") {
+                string info_str = "##INFO=<ID=" + pair.first + "_AF,Number=A,Type=Float,Description=\"Alternate Allele Frequencies in " + pair.first + "\">\n";
+                write(ofp, info_str.c_str());
+            }    
+        }
+
         write(ofp, "##INFO=<ID=Het,Number=A,Type=Integer,Description=\"Heterozygous Counts\">\n");
         write(ofp, "##INFO=<ID=Hom,Number=A,Type=Integer,Description=\"Homozygous Alternate Counts\">\n");
         write(ofp, "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Total depth at site calculated by summing the Allelic depth\">\n");
@@ -199,9 +239,9 @@ int main(int argc, char* argv[]) {
 
         int gt_index, dp_index, gq_index, ad_index; //HX
         TypeSwitcher gt_switcher, dp_switcher, gq_switcher, ad_switcher; //HX
-        unsigned int ns, an, ac_sample, ac_total;
+        unsigned int ns, an, ac_sample, ac_total; //HX
         set<unsigned int> hom_sample;
-        vector<unsigned int> ac, hom, het;
+        vector<unsigned int> ac, hom, het; // HX: here is where ac is defined
         int allele = 0;
         vector<int32_t> gt_values, dp_values, gq_values, ad_values; //HX
         vector<Histogram> dp_histograms, gq_histograms;
@@ -306,10 +346,28 @@ int main(int argc, char* argv[]) {
             ns = 0u;
             an = 0u;
             fill(ac.begin(), ac.end(), 0u); // cleanup allele, hom and het counts
+
+            // HX: here you loop over populations_ac
+            // for &pop1, &pop_ac in population_ac {
+            //     fill(pop_ac.begin(), pop_ac.end(), 0u);
+            // }
+            for(auto& pair : populations_ac) {
+                fill(pair.second.begin(), pair.second.end(), 0u);
+                populations_an[pair.first] = 0u ;
+            }
+            
+
+            
+
             fill(hom.begin(), hom.end(), 0u);
             fill(het.begin(), het.end(), 0u);
             if (rec->n_allele > ac.size()) { // append additional allele, hom and het counts if needed
                 ac.resize(rec->n_allele, 0u);
+                // HX: here in similar way resize you pop ac
+                for(auto& pair : populations_ac) {
+                    pair.second.resize(rec->n_allele, 0u);
+                }
+
                 hom.resize(rec->n_allele, 0u);
                 het.resize(rec->n_allele, 0u);
             }
@@ -331,6 +389,17 @@ int main(int argc, char* argv[]) {
             Histogram dp_histogram(hist_borders), gq_histogram(hist_borders);
 
             for (int i = 0; i < rec->n_sample; ++i) {
+                //HX
+                // cout << "Iteration " << i << " --- ";
+                // const char* sample_name_test = ;
+                // cout << "Sample " << i+1 << ": " << sample_name_test << endl;
+                // cout << "Population: " << const char* pop = populations[header->samples[i]] << endl;
+                // we can call the population sequencially using the index i:
+                const char* pop = populations[header->samples[i]].c_str(); // set pop as the population of current sample, here populations[header->samples[i]] is a std::string
+                // cout << populations[header->samples[i]] << endl;
+
+
+
                 (gt_switcher.*(gt_switcher.read))(gt_values);
                 if (dp_index != -1) (dp_switcher.*(dp_switcher.read))(dp_values); 
                 if (gq_index != -1) {
@@ -366,10 +435,18 @@ int main(int argc, char* argv[]) {
                         allele = bcf_gt_allele(v);
                         unique_alleles.insert(allele);
                         ac[allele] += 1u;
+                        // HX
+                        // populations_ac[populations[header->samples[i]]][allele] += 1u;
+                        populations_ac[pop][allele] += 1u;
+                        // pop_ac[pop][allele] += 1u; // something like that
+
+
                         ++ac_sample;
                         hom_sample.insert(allele);
                     }
                 }
+                // HX:
+                
 
                 if (ac_sample == 0u) { // all alleles missing for this sample
                     continue;
@@ -377,6 +454,7 @@ int main(int argc, char* argv[]) {
  
                 ++ns;
                 an += ac_sample;
+                populations_an[pop] += ac_sample;
 
                 if (hom_sample.size() == 1) { // homozygous for some allele
                     hom[*hom_sample.begin()] += 1;
@@ -422,6 +500,28 @@ int main(int argc, char* argv[]) {
                 ad_values.clear(); //HX
             }
             //HX
+            
+            cout << "Summary for each variant:" << endl;
+            for (const auto& pair : populations_ac) { // HX
+                cout << "Population: " << pair.first << ", Count: ";
+                for(const auto& num : pair.second) {
+                cout << num << ' ';
+                }
+                cout << " AN: " << populations_an[pair.first];
+                cout << '\n';
+            }
+            cout << "Allele Count: ";
+            for(const auto& num : ac) {
+                cout << num << ' ';
+                }
+                cout << '\n';
+            cout << "Allele Number: " << an << endl;
+
+
+
+
+
+            //HX
             // cout << "dp_histogram is: ";
             // for (const auto& dps : dp_histograms){
             //                 cout << dps. << " ";
@@ -463,6 +563,19 @@ int main(int argc, char* argv[]) {
             for (int i = 2; i < rec->n_allele; ++i) {
                 write(ofp, ",%g", an > 0 ? (ac[i] / (double)an) : 0.0);
             }
+            // {POP}_AF; but when POP == NA 
+            for (const auto& pair : populations_ac) { 
+                if (pair.first != "NA") {
+                    string afp_str = ";" + pair.first + "_AF=%g";
+                    write(ofp, afp_str.c_str(),  an > 0 ? (populations_ac[pair.first][1] / (double)populations_an[pair.first]) : 0.0);
+                    for (int i = 2; i < rec->n_allele; ++i) {
+                        write(ofp, ",%g", an > 0 ? (populations_ac[pair.first][i] / (double)populations_an[pair.first]) : 0.0);
+                    }
+                }    
+            }
+
+
+
             write(ofp, ";Het=%d", het[1]);
             for (int i = 2; i < rec->n_allele; ++i) {
                 write(ofp, ",%d", het[i]);
