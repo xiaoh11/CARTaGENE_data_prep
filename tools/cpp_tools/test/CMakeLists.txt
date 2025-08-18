@@ -37,4 +37,11 @@ install(FILES
             allelecounts_and_histograms.with_info_fields.output_ok.vcf.gz
             allelecounts_and_histograms.no_GQ.output_ok.vcf.gz
             allelecounts_and_histograms.region.no_GQ.output_ok.vcf.gz
+            input.population_af.vcf.gz
+            input.population_af.vcf.gz.tbi
+            samples.population_af.txt
+            samples.population_label.txt
+            population_af.main_test_cases.output_ok.vcf.gz
+            population_af.all.output_ok.vcf.gz
+            population_af.region.output_ok.vcf.gz
         DESTINATION test)

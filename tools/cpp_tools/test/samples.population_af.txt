@@ -1,0 +1,7 @@
+S1	PopA
+S2	PopB
+S3	Na
+S4	PopA
+S5	PopC
+S6	0
+S7	nA
