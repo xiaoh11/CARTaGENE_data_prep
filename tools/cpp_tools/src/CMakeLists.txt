@@ -1,4 +1,4 @@
-set(AUX_SRCS TypeSwitcher.cpp Histogram.cpp Percentiles.cpp aux.cpp)
+set(AUX_SRCS TypeSwitcher.cpp TypeSwitcher2.cpp Histogram.cpp Percentiles.cpp aux.cpp)
 
 find_library(HTS_LIB hts HINT ${CGET_PREFIX}/lib)
 find_library(BOOST_PROGRAM_OPTIONS_LIB boost_program_options HINT ${CGET_PREFIX}/lib)

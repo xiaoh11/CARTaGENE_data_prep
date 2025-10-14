@@ -1,6 +1,6 @@
 #include "TypeSwitcher.h"
 
-TypeSwitcher::TypeSwitcher() : fmt(nullptr), fmt_p(nullptr), read(nullptr) {
+TypeSwitcher::TypeSwitcher() : fmt(nullptr), fmt_p(nullptr), read(nullptr), read_string(nullptr){
 
 }
 
@@ -15,14 +15,28 @@ void TypeSwitcher::get_read(vector<int32_t>& v) {
 		Tbcf p = convert(fmt_p + j * sizeof(Tbcf));
 		if (p == missing) {
 			v.push_back(bcf_int32_missing);
-      } else if (p == vector_end) {
-         break;
+      	} else if (p == vector_end) {
+         	break;
 		} else {
 			v.push_back((int32_t)p);
 		}
 	}
 	fmt_p += fmt->size;
 }
+
+// HX: read char by char within the length of that field and return a string; then jump to the next sample
+void TypeSwitcher::get_read_string(string& s) {
+    s.clear();
+    for (int j = 0; j < fmt->n; ++j) {
+        char c = *(reinterpret_cast<char*>(fmt_p + j));
+        if (c == '\0') {
+            break;
+        }
+        s.push_back(c);
+    }
+    fmt_p += fmt->size;
+}
+
 
 void TypeSwitcher::init(bcf_fmt_t* fmt) throw (runtime_error) {
 	this->fmt = fmt;
@@ -36,6 +50,10 @@ void TypeSwitcher::init(bcf_fmt_t* fmt) throw (runtime_error) {
 			break;
 		case BCF_BT_INT32:
 			read = &TypeSwitcher::get_read<int32_t, le_to_i32, bcf_int32_missing, bcf_int32_vector_end>;
+			break;
+		//HX: enable reading string
+		case BCF_BT_CHAR:
+			read_string = &TypeSwitcher::get_read_string;
 			break;
 		default:
 			throw runtime_error("Error while resolving data types in FORMAT!");

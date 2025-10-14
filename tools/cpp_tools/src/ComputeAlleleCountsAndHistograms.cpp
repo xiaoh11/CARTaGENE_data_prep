@@ -12,6 +12,7 @@
 #include "Histogram.h"
 #include "TypeSwitcher.h"
 #include "aux.h"
+#include <string>
 
 #include <boost/program_options.hpp>
 
@@ -136,14 +137,12 @@ int main(int argc, char* argv[]) {
         int dp_id = bcf_hdr_id2int(header, BCF_DT_ID, "DP");
         int gq_id = bcf_hdr_id2int(header, BCF_DT_ID, "GQ");
         int ad_id = bcf_hdr_id2int(header, BCF_DT_ID, "AD"); //HX
+        int ft_id = bcf_hdr_id2int(header, BCF_DT_ID, "FT");
 
         if (bcf_hdr_idinfo_exists(header, BCF_HL_FMT, gt_id) == 0) {
             throw runtime_error("GT field was not found!");
         }
-
-
         //HX
-
         /*
         if (bcf_hdr_idinfo_exists(header, BCF_HL_FMT, dp_id) == 0) {
             throw runtime_error("DP field was not found!");
@@ -157,6 +156,10 @@ int main(int argc, char* argv[]) {
             } else {
                 cout << "AD field has been found and will be used to calculate DP" << endl;
             }
+        }
+
+        if (bcf_hdr_idinfo_exists(header, BCF_HL_FMT, ft_id) == 0) {
+            throw runtime_error("FT field was not found!");
         }
 
 
@@ -212,6 +215,7 @@ int main(int argc, char* argv[]) {
         }
 
         write(ofp, "##INFO=<ID=NS,Number=1,Type=Integer,Description=\"Number of Samples With Coverage\">\n");
+        write(ofp, "##INFO=<ID=F_MISSING,Number=1,Type=Float,Description=\"Fraction of missing genotypes\">\n"); //HX
         write(ofp, "##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Number of Alleles in Samples with Coverage\">\n");
         write(ofp, "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Alternate Allele Counts in Samples with Coverage\">\n");
         write(ofp, "##INFO=<ID=AF,Number=A,Type=Float,Description=\"Alternate Allele Frequencies\">\n");
@@ -237,17 +241,22 @@ int main(int argc, char* argv[]) {
         write(ofp, "##INFO=<ID=GQ_HIST_R,Number=R,Type=String,Description=\"Histograms of GQ across samples carrying allele; Mids: 2.5|7.5|12.5|17.5|22.5|27.5|32.5|37.5|42.5|47.5|52.5|57.5|62.5|67.5|72.5|77.5|82.5|87.5|92.5|97.5\">\n");
         write(ofp, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
 
-        int gt_index, dp_index, gq_index, ad_index; //HX
-        TypeSwitcher gt_switcher, dp_switcher, gq_switcher, ad_switcher; //HX
+        int gt_index, dp_index, gq_index, ad_index, ft_index; //HX
+        TypeSwitcher gt_switcher, dp_switcher, gq_switcher, ad_switcher, ft_switcher; //HX
+        // TypeSwitcher2 ft_switcher; // should be simplier than this
         unsigned int ns, an, ac_sample, ac_total; //HX
         set<unsigned int> hom_sample;
         vector<unsigned int> ac, hom, het; // HX: here is where ac is defined
         int allele = 0;
         vector<int32_t> gt_values, dp_values, gq_values, ad_values; //HX
+        string ft_value; //HX
         vector<Histogram> dp_histograms, gq_histograms;
         set<int> unique_alleles;
 
         cout << "Processing... " << flush;
+        // HX: check min and max AC & F_MISSING of monomorphic variants
+        double min_ac=2000.0, max_ac=0.0, min_fmissing=1.0, max_fmissing=0.0;
+        int num_monomorphic_variants = 0;
         while (bcf_sr_next_line(sr) > 0) {
             bcf1_t* rec = bcf_sr_get_line(sr, 0);
 
@@ -271,6 +280,7 @@ int main(int argc, char* argv[]) {
             dp_index = -1;
             gq_index = -1;
             ad_index = -1; //HX
+            ft_index = -1;
 
             for (int i = 0; i < rec->n_fmt; ++i) {
                 if (rec->d.fmt[i].id == gt_id) {
@@ -283,6 +293,9 @@ int main(int argc, char* argv[]) {
                 } else if (rec->d.fmt[i].id == ad_id) {
                     ad_index = i;
                     //cout << "ad_index: " << ad_index << endl; //HX: ad_idex was found to be 2
+                } else if (rec->d.fmt[i].id == ft_id) {
+                    ft_index = i;
+                    // cout << "ft_index: " << ft_index << endl; //HX: ft_idex was found to be 
                 }
             }
 
@@ -343,6 +356,17 @@ int main(int argc, char* argv[]) {
                 gq_switcher.init(&rec->d.fmt[gq_index]);
             }
 
+            //HX
+            if (ft_index == -1) {
+                cerr << "[warning] FT field missing for " << bcf_seqname(header, rec) << ":" << rec->pos + 1 << ":" << rec->d.allele[0] << "/" << rec->d.allele[1];
+                for (int i = 2; i < rec->n_allele; ++i) {
+                    cerr << "/" << rec->d.allele[i];
+                }
+                cerr << endl;
+            } else {
+                ft_switcher.init(&rec->d.fmt[ft_index]);
+            }
+
             ns = 0u;
             an = 0u;
             fill(ac.begin(), ac.end(), 0u); // cleanup allele, hom and het counts
@@ -399,19 +423,15 @@ int main(int argc, char* argv[]) {
                 // cout << populations[header->samples[i]] << endl;
 
 
-
                 (gt_switcher.*(gt_switcher.read))(gt_values);
+
                 if (dp_index != -1) (dp_switcher.*(dp_switcher.read))(dp_values); 
                 if (gq_index != -1) {
                     (gq_switcher.*(gq_switcher.read))(gq_values);
-                    // cout << "gq_values is: ";
-                    // for (const auto& gqs : gq_values){
-                    //     cout << gqs << " ";
-                    // }
-                    // cout << endl;
-                    
-                    }
-                //HX: try this to output the sum of ad_values
+                }
+
+
+                // HX: try this to output the sum of ad_values
                 if (ad_index != -1){
                     (ad_switcher.*(ad_switcher.read))(ad_values);
                     //HX: try to cout the elements in the ad_values vector if not missing
@@ -423,8 +443,27 @@ int main(int argc, char* argv[]) {
                         // }
                         // cout << "| sum of ad_values is: " << accumulate(ad_values.begin(), ad_values.end(), 0) << endl;
                     } else {
-                        cout << "ad_values are missing" << endl;
+                        // cout << "ad_values are missing" << endl;
                     }
+                }
+
+                //HX
+                if (ft_index != -1){
+                    if (ft_switcher.read_string) {
+                        (ft_switcher.*(ft_switcher.read_string))(ft_value);
+                        // cout << ft_value << endl;
+                    } else {
+                        cerr << "can't read ft as string..." << endl;
+                    }
+
+                }
+
+                // HX: filtered out low FT samples
+                // [WARNING]: always implement filtering after all the TypeSwitchers are triggered
+                if (ft_value != "PASS"){
+                    // const char* sample_id = bcf_hdr_int2id(header, BCF_DT_SAMPLE, i);
+                    // cout << "Sample no-pass: " << sample_id << " | " << ft_value << endl;
+                    continue;
                 }
 
                 ac_sample = 0u;
@@ -432,25 +471,40 @@ int main(int argc, char* argv[]) {
                 unique_alleles.clear();
                 for (auto&& v : gt_values) {
                     if (!bcf_gt_is_missing(v)) {
+                        ++ac_sample;
                         allele = bcf_gt_allele(v);
                         unique_alleles.insert(allele);
                         ac[allele] += 1u;
+                        hom_sample.insert(allele);
                         // HX
                         // populations_ac[populations[header->samples[i]]][allele] += 1u;
+                        // std::cout << "Population: " << pop << ", Allele: " << allele << std::endl;
                         populations_ac[pop][allele] += 1u;
                         // pop_ac[pop][allele] += 1u; // something like that
-
-
-                        ++ac_sample;
-                        hom_sample.insert(allele);
+                    } else {
                     }
                 }
-                // HX:
-                
 
+                // HX
+                // [WARNING]: always implement filtering after all the TypeSwitchers are triggered 
                 if (ac_sample == 0u) { // all alleles missing for this sample
                     continue;
                 }
+
+                
+                // HX: Previous filerting; now implemented into TypeSwitcher
+                // if (ft_index != -1){
+                //     // bcf_fmt_t* fmt = &rec->d.fmt[ft_index];
+                //     // int num_values = fmt->n; 
+                //     // uint8_t* values = fmt->p; 
+
+                //     // string ft_value(reinterpret_cast<char*>(values + i * num_values));
+                //     if (ft_value != "PASS"){
+                //         const char* sample_id = bcf_hdr_int2id(header, BCF_DT_SAMPLE, i);
+                //         cout << "Sample no-pass: " << sample_id << " | " << ft_value << endl;
+                //         continue;
+                //     }
+                // }
  
                 ++ns;
                 an += ac_sample;
@@ -498,6 +552,7 @@ int main(int argc, char* argv[]) {
                 dp_values.clear();
                 gq_values.clear();
                 ad_values.clear(); //HX
+                ft_value.clear();
             }
             //HX
             
@@ -517,11 +572,8 @@ int main(int argc, char* argv[]) {
                 cout << '\n';
             cout << "Allele Number: " << an << endl;
 
-
-
-
-
             //HX
+            // cout << "number of samples/columns: " << bcf_hdr_nsamples(header) << endl;
             // cout << "dp_histogram is: ";
             // for (const auto& dps : dp_histograms){
             //                 cout << dps. << " ";
@@ -530,10 +582,52 @@ int main(int argc, char* argv[]) {
 
 
             ac_total = ac[1];
+            double fmissing = (double)(bcf_hdr_nsamples(header)-ns)/bcf_hdr_nsamples(header);
+
             for (int i = 2; i < rec->n_allele; ++i) {
                 ac_total += ac[i];
             }
             if (ac_total == 0) {
+                num_monomorphic_variants += 1;
+
+                if (ac_total > max_ac) {
+                    max_ac = ac_total;
+                }
+                if (ac_total < min_ac) {
+                    min_ac = ac_total;
+                }
+                if (fmissing < min_fmissing) {
+                    min_fmissing = fmissing;
+                }
+                if (fmissing > max_fmissing) {
+                    max_fmissing = fmissing;
+                }
+                continue;
+            }
+
+            // HX: exclude monomorphic variants
+            int het_sum = 0, hom_sum = 0;
+            for (int i = 1; i < rec->n_allele; ++i) {  // start from i=1 to exclude ref allele
+                het_sum += het[i];
+                hom_sum += hom[i];
+            }
+            if (het_sum == 0 && hom_sum == 0) {
+                // cout << "Skipping monomorphic variant " << bcf_seqname(header, rec) << ":" << rec->pos + 1
+                //     << " because Het and Hom are both 0" << endl;
+                num_monomorphic_variants += 1;
+
+                if (ac_total > max_ac) {
+                    max_ac = ac_total;
+                }
+                if (ac_total < min_ac) {
+                    min_ac = ac_total;
+                }
+                if (fmissing < min_fmissing) {
+                    min_fmissing = fmissing;
+                }
+                if (fmissing > max_fmissing) {
+                    max_fmissing = fmissing;
+                }
                 continue;
             }
 
@@ -555,6 +649,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             write(ofp, "\tNS=%d;AN=%d", ns, an);
+            write(ofp, ";F_MISSING=%g", (double)(bcf_hdr_nsamples(header)-ns)/bcf_hdr_nsamples(header)); //HX
             write(ofp, ";AC=%d", ac[1]);
             for (int i = 2; i < rec->n_allele; ++i) {
                 write(ofp, ",%d", ac[i]);
@@ -563,18 +658,16 @@ int main(int argc, char* argv[]) {
             for (int i = 2; i < rec->n_allele; ++i) {
                 write(ofp, ",%g", an > 0 ? (ac[i] / (double)an) : 0.0);
             }
-            // {POP}_AF; but when POP == NA 
+            // {POP}_AF; check when POP == NA and skip
             for (const auto& pair : populations_ac) { 
                 if (pair.first != "NA") {
                     string afp_str = ";" + pair.first + "_AF=%g";
-                    write(ofp, afp_str.c_str(),  an > 0 ? (populations_ac[pair.first][1] / (double)populations_an[pair.first]) : 0.0);
+                    write(ofp, afp_str.c_str(),  populations_an[pair.first] > 0 ? (populations_ac[pair.first][1] / (double)populations_an[pair.first]) : 0.0);
                     for (int i = 2; i < rec->n_allele; ++i) {
-                        write(ofp, ",%g", an > 0 ? (populations_ac[pair.first][i] / (double)populations_an[pair.first]) : 0.0);
+                        write(ofp, ",%g", populations_an[pair.first] > 0 ? (populations_ac[pair.first][i] / (double)populations_an[pair.first]) : 0.0);
                     }
                 }    
             }
-
-
 
             write(ofp, ";Het=%d", het[1]);
             for (int i = 2; i < rec->n_allele; ++i) {
@@ -584,19 +677,50 @@ int main(int argc, char* argv[]) {
             for (int i = 2; i < rec->n_allele; ++i) {
                 write(ofp, ",%d", hom[i]);
             }
+            // HX: capture monomorphic variants w/o ref DP and GQ; show warning and exit if any variant is monomorphic w/o alt DP or GQ
             if (dp_index != -1 || ad_index != -1) {
                 write(ofp, ";DP=%d", (long long int)dp_histogram.get_total());
                 write(ofp, ";AVGDP=%g", dp_histogram.get_average());
-                write(ofp, ";AVGDP_R=%g", dp_histograms[0].get_average());
+                // write(ofp, ";AVGDP_R=%g", dp_histograms[0].get_average());
+                double avg_dp_ref = dp_histograms[0].get_average();
+                if (isnan(avg_dp_ref)) {
+                    cerr << "monomorphic variant w/o ref DP: " << endl;
+                    write(ofp, ";AVGDP_R=.");
+                } else {
+                    write(ofp, ";AVGDP_R=%g", avg_dp_ref);
+                }
                 for (int i = 1; i < rec->n_allele; ++i) {
-                    write(ofp, ",%g", dp_histograms[i].get_average());
+                    double avg_dp_alt = dp_histograms[i].get_average();
+                    if (isnan(avg_dp_alt)) {
+                        cerr << "monomorphic variant: " << i << endl;
+                        exit(1);
+                        // write(ofp, ",.");
+                    } else {
+                        write(ofp, ",%g", avg_dp_alt);
+                    }
+                    // write(ofp, ",%g", dp_histograms[i].get_average());
                 }
             }
             if (gq_index != -1) {
                 write(ofp, ";AVGGQ=%g", gq_histogram.get_average());
-                write(ofp, ";AVGGQ_R=%g", gq_histograms[0].get_average());
+                // write(ofp, ";AVGGQ_R=%g", gq_histograms[0].get_average());
+                double avg_gq_ref = gq_histograms[0].get_average();
+                if (isnan(avg_gq_ref)) {
+                    cerr << "monomorphic variant w/o ref GQ: " << endl;
+                    write(ofp, ";AVGGQ_R=.");
+                } else {
+                    write(ofp, ";AVGGQ_R=%g", avg_gq_ref);
+                }
                 for (int i = 1; i < rec->n_allele; ++i) {
-                    write(ofp, ",%g", gq_histograms[i].get_average());
+                    double avg_gq_alt = gq_histograms[i].get_average();
+                    if (isnan(avg_gq_alt)) {
+                        cerr << "monomorphic variant: " << i << endl;
+                        exit(1);
+                        // write(ofp, ",.");
+                    } else {
+                        write(ofp, ",%g", avg_gq_alt);
+                    }
+                    // write(ofp, ",%g", gq_histograms[i].get_average());
                 }
             }
             if (dp_index != -1 || ad_index != -1) {
@@ -636,8 +760,12 @@ int main(int argc, char* argv[]) {
             }
             write(ofp, "\n");
         }
+        
+        cout << "monomorphic variants: " << num_monomorphic_variants << endl;
+        cout << "min and max AC sum: " << min_ac << " | " << max_ac << endl;
+        cout << "min and max f_missing: " << min_fmissing << " | " << max_fmissing << endl;
         cout << "Done." << endl;
-
+        
         bcf_sr_destroy(sr);
 
         if (bgzf_close(ofp) != 0) {
