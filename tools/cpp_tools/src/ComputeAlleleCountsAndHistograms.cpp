@@ -513,8 +513,8 @@ int main(int argc, char* argv[]) {
                 if (hom_sample.size() == 1) { // homozygous for some allele
                     hom[*hom_sample.begin()] += 1;
                 } else if (hom_sample.size() > 1) {
-                    if (hom_sample.erase(0) != 0) { // heterozygous with 1 REF and 1 ALT
-                        het[*hom_sample.begin()] += 1;
+                    for (const auto& allele : hom_sample) {
+                        het[allele] += 1;
                     }
                 }
 
