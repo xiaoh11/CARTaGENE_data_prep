@@ -115,3 +115,30 @@ TEST_F(ExecutableTest, AlleleCountsAndHistograms2_region) {
     ifstream test_output_file("allelecounts_and_histograms.region.no_GQ.output.vcf.gz");
     ASSERT_TRUE(equal(istreambuf_iterator<char>(ok_file.rdbuf()), istreambuf_iterator<char>(), istreambuf_iterator<char>(test_output_file.rdbuf())));
 }
+
+TEST_F(ExecutableTest, PopulationAFMainTestCases) {
+    string executable = "../bin/ComputePopulationAF";
+    vector<string> args = { "--in", "input.population_af.vcf.gz", "--samples", "samples.population_af.txt", "--fields", "DP", "--out", "population_af.main_test_cases.output.vcf.gz" };
+    ASSERT_EQ(pr::system(executable, args), 0u);
+    ifstream ok_file("population_af.main_test_cases.output_ok.vcf.gz");
+    ifstream test_output_file("population_af.main_test_cases.output.vcf.gz");
+    ASSERT_TRUE(equal(istreambuf_iterator<char>(ok_file.rdbuf()), istreambuf_iterator<char>(), istreambuf_iterator<char>(test_output_file.rdbuf())));
+}
+
+TEST_F(ExecutableTest, PopulationAFAll) {
+    string executable = "../bin/ComputePopulationAF";
+    vector<string> args = { "--in", "input.vcf.gz", "--samples", "samples.population_label.txt", "--out", "population_af.all.output.vcf.gz" };
+    ASSERT_EQ(pr::system(executable, args), 0u);
+    ifstream ok_file("population_af.all.output_ok.vcf.gz");
+    ifstream test_output_file("population_af.all.output.vcf.gz");
+    ASSERT_TRUE(equal(istreambuf_iterator<char>(ok_file.rdbuf()), istreambuf_iterator<char>(), istreambuf_iterator<char>(test_output_file.rdbuf())));
+}
+
+TEST_F(ExecutableTest, PopulationAFRegion) {
+    string executable = "../bin/ComputePopulationAF";
+    vector<string> args = { "--in", "input.vcf.gz", "--samples", "samples.population_label.txt", "--out", "population_af.region.output.vcf.gz", "--region", "22:16050739-16051721" };
+    ASSERT_EQ(pr::system(executable, args), 0u);
+    ifstream ok_file("population_af.region.output_ok.vcf.gz");
+    ifstream test_output_file("population_af.region.output.vcf.gz");
+    ASSERT_TRUE(equal(istreambuf_iterator<char>(ok_file.rdbuf()), istreambuf_iterator<char>(), istreambuf_iterator<char>(test_output_file.rdbuf())));
+}
